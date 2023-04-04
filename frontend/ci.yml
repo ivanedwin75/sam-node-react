@@ -1,0 +1,39 @@
+steps:
+  - bash: |
+      echo "##vso[task.setvariable variable=hashOrTag]$(git describe --tags 2> /dev/null || git rev-parse --short HEAD)"
+    workingDirectory: $(Build.SourcesDirectory)/$(Build.Repository.Name)
+    displayName: 'Set hashOrTag'
+
+  - task: NodeTool@0
+    displayName: 'Use Node 16.15.0'
+    inputs:
+      versionSpec: 16.15.0
+
+  - task: Cache@2
+    displayName: Cache npm
+    inputs:
+      key: 'npm | "$(Agent.OS)" | $(Build.SourcesDirectory)/$(Build.Repository.Name)/package.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+      path: $(npm_config_cache)
+  
+  #   git submodule update --init --recursive
+  - script: |
+      npm install --cache $(npm_config_cache)
+      npm run build-$(BRANCH_NAME)
+    workingDirectory: $(Build.SourcesDirectory)/$(Build.Repository.Name)
+    displayName: 'npm install and build'
+    
+  - task: ArchiveFiles@2
+    displayName: 'Archive files'
+    inputs:
+      rootFolderOrFile: '$(System.DefaultWorkingDirectory)/$(Build.Repository.Name)/build/'
+      includeRootFolder: false
+      replaceExistingArchive: true
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(hashOrTag).zip'
+
+  - task: publishBuildArtifacts@1
+    displayName: 'Publish Artifacts'
+    inputs:
+      artifactName: '$(ArtifactName)'
+      PathtoPublish: '$(Build.ArtifactStagingDirectory)'

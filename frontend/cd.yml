@@ -1,0 +1,40 @@
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Build Artifacts'
+    inputs:
+      artifactName: '$(ArtifactName)'
+      patterns: '**/*.zip'
+      path: '$(Build.ArtifactStagingDirectory)'
+
+  - bash: |
+      mkdir $(System.DefaultWorkingDirectory)/dist/$(CLOUDFRONT_PATH) || echo "asignaciones"
+    displayName: 'Create S3 folder'
+
+  - task: ExtractFiles@1
+    displayName: 'Extract Zip Artifacts'
+    inputs:
+      archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/*.zip'
+      cleanDestinationFolder: true
+      destinationFolder: './dist/$(CLOUDFRONT_PATH)'
+
+  - task: S3Upload@1
+    displayName: 'Upload artifacts to s3 buckets'
+    inputs:
+      awsCredentials: pragma-novedades-$(BRANCH_NAME)
+      regionName: '$(AWS_REGION)'
+      bucketName: '$(S3_BUCKET_NAME)'
+      sourceFolder: '$(Pipeline.Workspace)/s/dist'
+      globExpressions: '**'
+      filesAcl: 'bucket-owner-full-control'
+
+  - task: AmazonWebServices.aws-vsts-tools.AWSCLI.AWSCLI@1
+    displayName: 'AWS CLI: Create cloudfront invalidation'
+    retryCountOnTaskFailure: 5
+    continueOnError: true
+    inputs:
+      awsCredentials: pragma-novedades-$(BRANCH_NAME)
+      regionName: '$(AWS_REGION)'
+      awsCommand: cloudfront
+      awsSubCommand: 'create-invalidation'
+      awsArguments: '--distribution-id $(CLOUDFRONT_ID) --paths "/*"'
+      failOnStandardError: false

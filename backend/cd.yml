@@ -1,0 +1,23 @@
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Build Artifacts'
+    inputs:
+      artifactName: '$(ArtifactName)'
+      patterns: '**/*.zip'
+      path: '$(Build.ArtifactStagingDirectory)'
+
+  - task: ExtractFiles@1
+    displayName: 'Extract Zip Artifacts'
+    inputs:
+      archiveFilePatterns: '$(Build.ArtifactStagingDirectory)/*.zip'
+      cleanDestinationFolder: true
+      destinationFolder: './dist/'
+
+  - task: AWSShellScript@1
+    displayName: 'Deploy Infrastructure'
+    inputs:
+        awsCredentials: pragma-novedades-$(BRANCH_NAME)
+        regionName: $(AWS_REGION)
+        scriptType: "inline"
+        inlineScript: cd dist && yes | sam deploy --config-env $(BRANCH_NAME) --config-file samconfig.toml
+    continueOnError: true

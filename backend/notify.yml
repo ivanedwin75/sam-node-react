@@ -1,0 +1,26 @@
+steps:
+  - bash: |
+     echo "##vso[task.setvariable variable=hash;]$(git rev-parse --short HEAD 2> /dev/null)"
+     echo "##vso[task.setvariable variable=hasfull;]$(git rev-parse HEAD 2> /dev/null)"
+     echo "##vso[task.setvariable variable=currentBranch;]$(Build.SourceBranchName)"
+     echo "##vso[task.setvariable variable=buildStatus;]$(Agent.JobStatus)"
+     echo "##vso[task.setvariable variable=buildId;]$(Build.BuildId)"
+     echo "##vso[task.setvariable variable=organizationName;]$(System.TeamFoundationCollectionUri)"
+     echo "##vso[task.setvariable variable=projectName;]$(System.TeamProject)"
+     echo "##vso[task.setvariable variable=authorCommit;]$(git log -1 --pretty=format:'%an' 2> /dev/null)"
+     echo "##vso[task.setvariable variable=authorCommitEmail;]$(git log -1 --pretty=format:'%ae' 2> /dev/null)"
+     echo "##vso[task.setvariable variable=commitReference;]$(git show -s --format='%h %s')"
+     echo "##vso[task.setvariable variable=jobName;]$(Agent.JobName)"
+     echo "##vso[task.setvariable variable=webHookUrl;]$(URL_WEBHOOK)"
+     echo "##vso[task.setvariable variable=repositoryName;]$(Build.Repository.Name)"
+    displayName: 'Set variables for notify.sh'
+    workingDirectory: $(Build.SourcesDirectory)/$(Build.Repository.Name)
+    condition: always()
+
+  - task: Bash@3
+    displayName: 'Send Google Chat Alert'
+    condition: always()
+    inputs:
+      targetType: filePath
+      filePath: './pipeline-templates/scripts/notify.sh'
+      arguments: '"$(hash)" "$(hasfull)" "$(currentBranch)" "$(buildStatus)" "$(buildId)" "$(organizationName)" "$(projectName)" "$(authorCommit)" "$(authorCommitEmail)" "$(commitReference)" "$(jobName)" "$(webHookUrl)" "$(repositoryName)"'
