@@ -1,0 +1,141 @@
+resources:
+  repositories:
+  - repository: templates
+    type: git
+    name: Novedades/pipeline-templates
+    ref: develop
+
+trigger:
+  branches:
+    include:
+      - main
+      - release
+      - develop
+
+pool:
+  name: Azure Pipelines
+  vmImage: ubuntu-latest
+
+variables:
+  - group: NOTIFY_VARS
+  - name: npm_config_cache
+    value: $(Pipeline.Workspace)/.npm
+  - name: ArtifactName
+    value: '$(Build.Repository.Name)_$(Build.BuildNumber)'
+  - name: BRANCH_NAME
+    value: $[replace(variables['Build.SourceBranch'], 'refs/heads/', '')]
+
+stages:
+  - stage: Develop
+    displayName: 'Development enviroment CI/CD'
+    variables:
+      - group: DEV_VARS
+      - name: S3_BUCKET_NAME
+        value: '$(S3_BUCKET_NAME_ASIGNACIONES)'
+      - name: CLOUDFRONT_PATH
+        value: '$(CLOUDFRONT_PATH_ASIGNACIONES)'
+    jobs:
+      - job: DevelopCI
+        displayName: 'Develop CI'
+        condition: |
+          and(always(), eq(variables['BRANCH_NAME'], 'develop'))
+        steps:
+          - checkout: self
+            submodules: true
+            persistCredentials: true
+          - checkout: templates
+          - template: frontend/ci.yml@templates
+          - template: frontend/notify.yml@templates
+
+      - job: DevelopCD
+        displayName: 'Develop CD'
+        dependsOn: DevelopCI
+        condition: |
+          and(succeeded(), eq(variables['BRANCH_NAME'], 'develop'))
+        steps:
+          - checkout: self
+            submodules: true
+            persistCredentials: true
+          - checkout: templates
+          - template: frontend/cd.yml@templates
+          - template: frontend/notify.yml@templates
+
+  - stage: QualityAssurance
+    displayName: 'QA enviroment CI/CD'
+    variables:
+      - group: QA_VARS
+      - name: S3_BUCKET_NAME
+        value: '$(S3_BUCKET_NAME_ASIGNACIONES)'
+      - name: CLOUDFRONT_PATH
+        value: '$(CLOUDFRONT_PATH_ASIGNACIONES)'
+    jobs:
+      - job: QualityAssuranceCI
+        displayName: 'QualityAssurance CI'
+        condition: |
+          and(always(), eq(variables['BRANCH_NAME'], 'release'))
+        steps:
+          - checkout: self
+            submodules: true
+            persistCredentials: true
+          - checkout: templates
+          - template: frontend/ci.yml@templates
+          - template: frontend/notify.yml@templates
+
+      - job: QualityAssuranceCD
+        displayName: 'QualityAssurance CD'
+        dependsOn: QualityAssuranceCI
+        condition: |
+          and(succeeded(), eq(variables['BRANCH_NAME'], 'release'))
+        steps:
+          - checkout: self
+            submodules: true
+            persistCredentials: true
+          - checkout: templates
+          - template: frontend/cd.yml@templates
+          - template: frontend/notify.yml@templates
+
+  - stage: Production
+    displayName: 'Production CI/CD'
+    variables:
+      - group: PROD_VARS
+      - name: S3_BUCKET_NAME
+        value: '$(S3_BUCKET_NAME_ASIGNACIONES)'
+      - name: CLOUDFRONT_PATH
+        value: '$(CLOUDFRONT_PATH_ASIGNACIONES)'
+    jobs:
+      - job: ProductionCI
+        displayName: 'Production CI'
+        condition: |
+          and(always(), eq(variables['BRANCH_NAME'], 'main'))
+        steps:
+          - checkout: self
+            submodules: true
+            persistCredentials: true
+          - checkout: templates
+          - template: frontend/ci.yml@templates
+          - template: frontend/notify.yml@templates
+
+      - job: waitForValidation
+        displayName: 'Wait for external validation'
+        dependsOn: ProductionCI
+        pool: server
+        timeoutInMinutes: '4320' # job times out in 3 days
+        steps:
+        - task: ManualValidation@0
+          timeoutInMinutes: 1440 # task times out in 1 day
+          inputs:
+            instructions: 'Please validate production deployment'
+            onTimeout: 'reject'
+
+      - job: ProductionCD
+        displayName: 'Production CD'
+        dependsOn: waitForValidation
+        condition: |
+          and(succeeded(), eq(variables['BRANCH_NAME'], 'main'))
+        steps:
+          - checkout: self
+            submodules: true
+            persistCredentials: true
+          - checkout: templates
+          - template: frontend/cd.yml@templates
+          - template: frontend/notify.yml@templates
